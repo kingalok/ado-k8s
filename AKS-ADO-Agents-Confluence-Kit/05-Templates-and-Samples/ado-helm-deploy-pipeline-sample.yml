@@ -1,0 +1,24 @@
+# Azure DevOps pipeline – Phase-1 Helm deployment
+trigger: none
+
+stages:
+- stage: Deploy
+  jobs:
+  - job: HelmUpgrade
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: HelmInstaller@1
+      inputs:
+        helmVersionToInstall: 'latest'
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'Kubernetes Service Connection'
+        kubernetesServiceEndpoint: 'aks-prod-conn'
+        namespace: 'ado-agents'
+        command: 'upgrade'
+        chartType: 'FilePath'
+        chartPath: 'ado-agent-chart'
+        releaseName: 'ado-agents-s'
+        valueFile: 'values-sample.yaml'
+        install: true

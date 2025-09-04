@@ -1,0 +1,18 @@
+# Sample Dockerfile for DB-Ops ADO Agent
+FROM ubuntu:22.04
+
+ARG ADO_AGENT_VERSION=3.240.1
+ENV AGENT_ALLOW_RUNASROOT=0
+
+# Add tools (psql, pg_dump, pg_restore, az, jq, curl, gzip) as needed
+
+RUN useradd -m -s /bin/bash vsts &&     apt-get update && apt-get install -y --no-install-recommends       ca-certificates curl jq gnupg gzip       postgresql-client     && rm -rf /var/lib/apt/lists/*
+
+USER vsts
+WORKDIR /home/vsts
+
+# Install ADO agent
+RUN mkdir -p /home/vsts/agent && cd /home/vsts/agent &&     curl -L -o agent.tar.gz https://vstsagentpackage.azureedge.net/agent/${ADO_AGENT_VERSION}/vsts-agent-linux-x64-${ADO_AGENT_VERSION}.tar.gz &&     tar zxvf agent.tar.gz && rm agent.tar.gz
+
+COPY entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

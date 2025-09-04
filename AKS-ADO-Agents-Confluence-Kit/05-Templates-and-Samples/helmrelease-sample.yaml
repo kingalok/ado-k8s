@@ -1,0 +1,19 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: ado-agents-s
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: ado-agent-chart
+      sourceRef:
+        kind: HelmRepository
+        name: nexus-helm
+      version: "1.0.0"
+  valuesFrom:
+    - kind: ConfigMap
+      name: ado-agents-s-values
+  values:
+    global:
+      imageTag: "1.0.0"

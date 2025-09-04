@@ -1,0 +1,42 @@
+# Sample values.yaml for ADO agents (S/M/L pools)
+
+global:
+  registry: myregistry.example.com/ado-agents
+  imageTag: "1.0.0"
+
+agent:
+  organizationUrl: "https://dev.azure.com/myorg"
+  poolName: "pool-euw-s"
+  workDir: "/home/vsts/work"
+  # Secret ref that holds a short-lived PAT only for registration
+  patSecretRef: "ado-agent-pat"
+
+image:
+  repository: "{{ .Values.global.registry }}"
+  tag: "{{ .Values.global.imageTag }}"
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+keda:
+  enabled: true
+  minReplicas: 0
+  maxReplicas: 10
+  pollingInterval: 30
+  cooldownPeriod: 120
+  triggers:
+    - type: azure-pipelines
+      metadata:
+        organizationURL: "https://dev.azure.com/myorg"
+        poolID: "123"     # use pool ID, not name
+        targetPipelinesQueueLength: "1"
