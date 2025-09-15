@@ -1,0 +1,17 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ado-agent-std
+spec:
+  scaleTargetRef:
+    name: ado-agent-std
+  pollingInterval: 30
+  cooldownPeriod: 120
+  minReplicaCount: 0
+  maxReplicaCount: 12
+  triggers:
+    - type: azure-pipelines
+      metadata:
+        organizationURL: "https://dev.azure.com/CHANGE_ME_ORG"
+        poolID: "CHANGE_ME_POOLID_STD"
+        targetPipelinesQueueLength: "1"

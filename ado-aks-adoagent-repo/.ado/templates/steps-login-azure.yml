@@ -1,0 +1,12 @@
+parameters:
+  serviceConnection: ""
+
+steps:
+- task: AzureCLI@2
+  displayName: "Azure: Login"
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: pscore
+    scriptLocation: inlineScript
+    inlineScript: |
+      Write-Host "Logged in with service connection."

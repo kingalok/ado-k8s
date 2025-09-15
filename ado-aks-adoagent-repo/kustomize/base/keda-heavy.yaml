@@ -1,0 +1,19 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ado-agent-heavy
+  labels:
+    app.kubernetes.io/part-of: ado-agents
+spec:
+  scaleTargetRef:
+    name: ado-agent-heavy
+  pollingInterval: 30
+  cooldownPeriod: 120
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  triggers:
+    - type: azure-pipelines
+      metadata:
+        organizationURL: "https://dev.azure.com/CHANGE_ME_ORG"
+        poolID: "67890"
+        targetPipelinesQueueLength: "1"

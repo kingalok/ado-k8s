@@ -1,0 +1,113 @@
+trigger:
+  branches:
+    include: [ master ]
+  paths:
+    include: [ build/**, .ado/** ]
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  DEV_ACR_NAME: 'CHANGE_ME_DEV_ACR'
+  IMAGE_NAME: 'ado/agent'
+  AZURE_SUBSCRIPTION: 'CHANGE_ME_DEV_SERVICE_CONN'
+  RESOURCE_GROUP: 'CHANGE_ME_DEV_RG'
+  VERSION: ''
+  IMAGE_REF: ''
+
+stages:
+- stage: BuildAndPublish
+  displayName: "Build image (ACR Build with Podman fallback), publish metadata"
+  jobs:
+  - job: build
+    steps:
+    - checkout: self
+      persistCredentials: true
+
+    - template: templates/steps-set-version.yml
+
+    - template: templates/steps-login-azure.yml
+      parameters:
+        serviceConnection: $(AZURE_SUBSCRIPTION)
+
+    - task: AzureCLI@2
+      name: ACRBuild
+      displayName: "ACR Build (preferred)"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          echo ">> Building image $(IMAGE_NAME):$(VERSION) with ACR Build"
+          az acr build \
+            --registry $(DEV_ACR_NAME) \
+            --image $(IMAGE_NAME):$(VERSION) \
+            --file build/Dockerfile \
+            .
+
+    - powershell: |
+        if ("$(ACRBuild.ExitCode)" -ne "0") {
+          Write-Host "ACR Build failed. Attempting Podman fallback (best-effort)."
+          $ErrorActionPreference = 'Continue'
+          choco install -y podman || echo "Podman install failed (non-blocking)."
+          $env:REG="$(DEV_ACR_NAME).azurecr.io"
+          $imgFull="$env:REG/$(IMAGE_NAME):$(VERSION)"
+          podman --version || echo "Podman not available."
+          podman build -f build/Dockerfile -t $imgFull . || echo "Podman build failed (non-blocking)."
+          az acr login -n $(DEV_ACR_NAME) || echo "ACR login may fail, continuing."
+          podman push $imgFull || echo "Podman push failed (non-blocking)."
+        } else {
+          Write-Host "ACR Build succeeded; skipping Podman fallback."
+        }
+      displayName: "Fallback: Podman build (best-effort on failure)"
+      condition: failed()
+
+    - task: AzureCLI@2
+      name: GetDigest
+      displayName: "Resolve image digest (if exists)"
+      inputs:
+        azureSubscription: $(AZURE_SUBSCRIPTION)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          echo ">> Resolving digest for $(IMAGE_NAME):$(VERSION)"
+          DIGEST=$(az acr repository show-manifests -n $(DEV_ACR_NAME) --repository $(IMAGE_NAME) \
+            --query "[?tags[?@=='$(VERSION)']].digest" -o tsv | head -n1)
+          if [ -z "$DIGEST" ]; then
+            echo "No digest found. Build may have failed entirely."
+            exit 1
+          fi
+          echo "Digest: $DIGEST"
+          echo "##vso[task.setvariable variable=IMAGE_DIGEST;isOutput=true]$DIGEST"
+          echo "{ \"registry\": \"$(DEV_ACR_NAME).azurecr.io\", \"image\": \"$(IMAGE_NAME)\", \"version\": \"$(VERSION)\", \"digest\": \"$DIGEST\" }" > image-metadata.json
+
+    - template: templates/steps-cosign-sign.yml
+      parameters:
+        imageRef: "$(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME)@$(GetDigest.IMAGE_DIGEST)"
+        keyRef: "keyless"
+
+    - powershell: |
+        $ErrorActionPreference = 'Continue'
+        $trivyVersion = "0.52.3"
+        $trivyUrl = "https://github.com/aquasecurity/trivy/releases/download/v$trivyVersion/trivy_$trivyVersion_windows-64bit.zip"
+        Invoke-WebRequest $trivyUrl -OutFile trivy.zip; Expand-Archive trivy.zip -DestinationPath trivy
+        .\\trivy\\trivy.exe image --timeout 5m --severity CRITICAL,HIGH --format table "$(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME)@$(GetDigest.IMAGE_DIGEST)" | Out-File -FilePath trivy-report.txt -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { Write-Host "TRIVY non-blocking error."; }
+
+        $syftUrl = "https://github.com/anchore/syft/releases/download/v1.15.0/syft_1.15.0_windows_amd64.zip"
+        Invoke-WebRequest $syftUrl -OutFile syft.zip; Expand-Archive syft.zip -DestinationPath syft
+        .\\syft\\syft.exe "$(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME)@$(GetDigest.IMAGE_DIGEST)" -o spdx-json | Out-File -FilePath sbom.json -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { Write-Host "SYFT non-blocking error."; }
+
+        az acr repository show-manifests -n $(DEV_ACR_NAME) --repository $(IMAGE_NAME) --detail | Out-File -FilePath defender-manifest.json -Encoding utf8
+        if ($LASTEXITCODE -ne 0) { Write-Host "Defender query non-blocking error."; }
+      displayName: "Best-effort scans (Trivy, Syft SBOM, Defender)"
+      continueOnError: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish image metadata and reports"
+      inputs:
+        pathToPublish: $(System.DefaultWorkingDirectory)
+        artifactName: image-metadata

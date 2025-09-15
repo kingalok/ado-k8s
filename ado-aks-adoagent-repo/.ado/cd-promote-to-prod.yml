@@ -1,0 +1,51 @@
+trigger: none
+
+parameters:
+- name: version
+  displayName: "Version to promote (SemVer)"
+  type: string
+
+variables:
+  DEV_ACR_NAME:  'CHANGE_ME_DEV_ACR'
+  PROD_ACR_NAME: 'CHANGE_ME_PROD_ACR'
+  IMAGE_NAME:    'ado/agent'
+  AZ_SUB_DEV:    'CHANGE_ME_DEV_SERVICE_CONN'
+  AZ_SUB_PROD:   'CHANGE_ME_PROD_SERVICE_CONN'
+
+pool:
+  vmImage: 'windows-latest'
+
+stages:
+- stage: Promote
+  displayName: "Promote image digest from DEV ACR to PROD ACR"
+  jobs:
+  - job: import
+    steps:
+    - task: AzureCLI@2
+      name: GetDigest
+      displayName: "Resolve digest from DEV"
+      inputs:
+        azureSubscription: $(AZ_SUB_DEV)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          DIGEST=$(az acr repository show-manifests -n $(DEV_ACR_NAME) --repository $(IMAGE_NAME) \
+            --query "[?tags[?@=='${{ parameters.version }}']].digest" -o tsv | head -n1)
+          if [ -z "$DIGEST" ]; then
+            echo "Version not found in DEV registry"
+            exit 1
+          fi
+          echo "##vso[task.setvariable variable=IMAGE_DIGEST;isOutput=true]$DIGEST"
+
+    - task: AzureCLI@2
+      displayName: "Import into PROD (immutable)"
+      inputs:
+        azureSubscription: $(AZ_SUB_PROD)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          az acr import -n $(PROD_ACR_NAME) \
+            --source $(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME)@$(GetDigest.IMAGE_DIGEST) \
+            --image $(IMAGE_NAME):${{ parameters.version }}

@@ -1,0 +1,10 @@
+steps:
+- powershell: |
+    if (-not $env:VERSION -or $env:VERSION -eq "") {
+      $now = Get-Date -Format "yyyy.MM.dd.HHmm"
+      Write-Host "##vso[task.setvariable variable=VERSION]$now"
+      Write-Host "VERSION set to $now"
+    } else {
+      Write-Host "VERSION preset to $env:VERSION"
+    }
+  displayName: "Set VERSION if missing"

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ado-agent-heavy
+  labels:
+    app.kubernetes.io/name: ado-agent-heavy
+    app.kubernetes.io/part-of: ado-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ado-agent-heavy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ado-agent-heavy
+        app.kubernetes.io/part-of: ado-agents
+        ado.pool: heavy
+    spec:
+      serviceAccountName: ado-agent
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: agent
+        image: CHANGE_ME_DEV_ACR.azurecr.io/ado/agent:1.0.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ADO_URL
+          value: "https://dev.azure.com/CHANGE_ME_ORG"
+        - name: ADO_POOL
+          value: "pool-CHANGE_ME_REGION-heavy"
+        - name: ADO_AGENT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ADO_WORK
+          value: "_work"
+        volumeMounts:
+        - name: ado-pat
+          mountPath: /var/run/secrets/ado
+          readOnly: true
+        resources:
+          requests:
+            cpu: "4000m"
+            memory: "8Gi"
+          limits:
+            cpu: "6000m"
+            memory: "12Gi"
+      volumes:
+      - name: ado-pat
+        projected:
+          sources:
+          - secret:
+              name: ado-pat

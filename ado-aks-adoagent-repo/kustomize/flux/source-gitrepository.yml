@@ -1,0 +1,12 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: ado-agent-kustomize
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@CHANGE_ME_GIT_HOST/CHANGE_ME_GROUP/ado-aks-adoagent-repo.git
+  ref:
+    branch: master
+  secretRef:
+    name: CHANGE_ME_DEPLOY_KEY_SECRET

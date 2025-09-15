@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ado-agents
+resources:
+  - ../../../base
+patches:
+  - target:
+      kind: Deployment
+      name: ado-agent-std
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: "CHANGE_ME_PROD_ACR.azurecr.io/ado/agent:CHANGE_ME_TAG"
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: "pool-scu-std"
+  - target:
+      kind: Deployment
+      name: ado-agent-heavy
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: "CHANGE_ME_PROD_ACR.azurecr.io/ado/agent:CHANGE_ME_TAG"
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: "pool-scu-heavy"
+  - target:
+      kind: ScaledObject
+      name: ado-agent-std
+    patch: |
+      - op: replace
+        path: /spec/triggers/0/metadata/poolID
+        value: "CHANGE_ME_POOLID_STD"
+  - target:
+      kind: ScaledObject
+      name: ado-agent-heavy
+    patch: |
+      - op: replace
+        path: /spec/triggers/0/metadata/poolID
+        value: "CHANGE_ME_POOLID_HEAVY"
